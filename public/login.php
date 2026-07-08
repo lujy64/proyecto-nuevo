@@ -5,7 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../app/bootstrap.php';
 
 if (is_logged_in()) {
-    redirect('dashboard.php');
+    redirect('daily_entries.php');
 }
 
 $error = null;
@@ -21,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $username = trim((string) ($_POST['username'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
+    $rememberMe = isset($_POST['remember_me']);
 
     $statement = $pdo->prepare('SELECT * FROM users WHERE username = :username AND is_active = 1 LIMIT 1');
     $statement->execute(['username' => $username]);
@@ -34,22 +35,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $pdo->prepare('UPDATE users SET last_login_at = NOW() WHERE id = :id')->execute(['id' => $user['id']]);
-        session_regenerate_id(true);
-        $_SESSION['user'] = [
-            'id' => (int) $user['id'],
-            'full_name' => $user['full_name'],
-            'username' => $user['username'],
-            'role' => $user['role'],
-        ];
+        login_user($user);
 
-        redirect('dashboard.php');
+        if ($rememberMe) {
+            try {
+                create_remember_login($pdo, (int) $user['id']);
+            } catch (Throwable $exception) {
+                flash('error', 'Ingresaste correctamente, pero no se pudo activar Recordarme. Ejecuta database/auth_tokens_migration.sql.');
+            }
+        } else {
+            clear_remember_login($pdo);
+        }
+
+        redirect('daily_entries.php');
     }
 
     $error = 'Usuario o password incorrectos.';
 }
 
 $pageTitle = 'Ingresar';
-$bodyClass = 'auth-page';
 require __DIR__ . '/../app/views/header.php';
 ?>
 
@@ -57,7 +61,7 @@ require __DIR__ . '/../app/views/header.php';
     <section class="auth-card">
         <p class="eyebrow">Acceso privado</p>
         <h1>Ingresar a Ruta Clara</h1>
-        <p class="muted">Usa el usuario administrador creado al importar la base de datos.</p>
+        <p>Gestion privada para administrar choferes, autos, ingresos diarios, gastos y reportes de rendimiento desde cualquier dispositivo.</p>
 
         <?php if ($error): ?>
             <div class="flash error inline"><?= e($error) ?></div>
@@ -71,10 +75,25 @@ require __DIR__ . '/../app/views/header.php';
             </label>
             <label>
                 Password
-                <input type="password" name="password" autocomplete="current-password" required>
+                <span class="password-field">
+                    <input type="password" name="password" autocomplete="current-password" required data-password-input>
+                    <button class="password-toggle" type="button" data-password-toggle aria-label="Mostrar password" aria-pressed="false">Ver</button>
+                </span>
             </label>
+            <div class="auth-options">
+                <label class="check-row">
+                    <input type="checkbox" name="remember_me" value="1">
+                    Recordarme
+                </label>
+                <a class="button ghost small" href="forgot_password.php">Olvide mi contrase&ntilde;a</a>
+            </div>
             <button class="button primary full" type="submit">Ingresar</button>
         </form>
+
+        <div class="auth-info">
+            <strong>Ruta Clara</strong>
+            <span>Sistema de control operativo desarrollado por The Panther Soft.</span>
+        </div>
     </section>
 </main>
 
